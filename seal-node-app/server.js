@@ -138,7 +138,7 @@ app.put("/api/subscription/:subscriptionId/skip/:attemptId", checkAuth, async (r
     const payload = {
       id: billingAttemptId,
       subscription_id: subscriptionId,
-      action
+      action:"skip",
     };
 
     const updateResp = await callSeal(`/subscription-billing-attempt`, {
