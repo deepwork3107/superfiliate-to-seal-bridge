@@ -50,7 +50,7 @@ app.get("/api/subscriptions", checkAuth, async (req, res) => {
     }
 
     const email = encodeURIComponent(rawEmail);
-    const { ok, status, body } = await callSeal(`/subscriptions?query=${email}&with-items=true`);
+    const { ok, status, body } = await callSeal(`/subscriptions?query=${email}&with-items=true&with-billing-attempts=true`);
 
     if (!ok) {
       return res.status(200).json({
@@ -64,13 +64,50 @@ app.get("/api/subscriptions", checkAuth, async (req, res) => {
     else if (Array.isArray(body?.subscriptions)) list = body.subscriptions;
     else if (Array.isArray(body?.payload)) list = body.payload;
 
-    const subs = list.map(s => ({
-      id: s.id, 
-      status: s.status,
-      next_charge_at: s.next_billing || s.next_order_datetime || s.next_charge_at || null,
-      items: (s.items || []).map(i => ({ title: i.title, qty: i.quantity, id: i.id })),
-      discounts: s.discount_codes || []
-    }));
+    const subs = list.map(s => {
+      const billingAttempts = (s.billing_attempts || []).map(ba => ({
+        id: ba.id,
+        date: ba.date || ba.date_time || ba.datetime || ba.scheduled_at || null,
+        status: ba.status || null,
+        order_id: ba.order_id || null,
+        completed_at: ba.completed_at || null
+      }));
+
+      let nextBillingAttempt = null;
+      const now = new Date();
+      
+      const upcomingAttempts = billingAttempts.filter(ba => {
+        const status = (ba.status || "").toLowerCase().trim();
+        const attemptDate = ba.date ? new Date(ba.date) : null;
+        const isPending = !status || status === "pending" || status === "";
+        const isFuture = attemptDate && attemptDate > now;
+        return isPending || isFuture;
+      });
+
+      if (upcomingAttempts.length > 0) {
+        upcomingAttempts.sort((a, b) => {
+          const dateA = a.date ? new Date(a.date) : new Date(0);
+          const dateB = b.date ? new Date(b.date) : new Date(0);
+          return dateA - dateB;
+        });
+        
+        nextBillingAttempt = {
+          id: upcomingAttempts[0].id,
+          date: upcomingAttempts[0].date,
+          status: upcomingAttempts[0].status || "pending"
+        };
+      }
+
+      return {
+        id: s.id, 
+        subscription_id: s.id,
+        status: s.status,
+        items: (s.items || []).map(i => ({ title: i.title, qty: i.quantity, id: i.id })),
+        discounts: s.discount_codes || [],
+        billing_attempts: billingAttempts,
+        next_billing_attempt: nextBillingAttempt
+      };
+    });
 
     return res.status(200).json({ subscriptions: subs });
   } catch (err) {
@@ -81,10 +118,57 @@ app.get("/api/subscriptions", checkAuth, async (req, res) => {
   }
 });
 
-/** ----- PUT /api/subscription/:id  { action: pause|resume|cancel|reactivate } ----- 
- * According to Seal API docs: https://www.sealsubscriptions.com/articles/merchant-api-documentation
- * Uses PUT /subscription (singular, no ID in path) with { id, action } in body
+/** ----- PUT /api/subscription/:subscriptionId/skip/:attemptId -----
+ * Skip a specific billing attempt for the subscription.
  */
+app.put("/api/subscription/:subscriptionId/skip/:attemptId", checkAuth, async (req, res) => {
+  try {
+    const subscriptionId = Number(req.params.subscriptionId);
+    const billingAttemptId = Number(req.params.attemptId);
+
+    if (!subscriptionId || Number.isNaN(subscriptionId)) {
+      return res.status(400).json({ error: "Invalid subscription_id in URL" });
+    }
+
+    if (!billingAttemptId || Number.isNaN(billingAttemptId)) {
+      return res.status(400).json({ error: "Invalid billing_attempt_id in URL" });
+    }
+
+    const payload = {
+      id: billingAttemptId,
+      subscription_id: subscriptionId,
+      action: "skip"
+    };
+
+    const updateResp = await callSeal(`/subscription-billing-attempt`, {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    });
+
+    if (!updateResp.ok) {
+      return res.status(200).json({
+        error: {
+          reason: "upstream_error",
+          status: updateResp.status,
+          body: updateResp.body
+        }
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      subscription_id: subscriptionId,
+      billing_attempt_id: billingAttemptId,
+      result: updateResp.body
+    });
+  } catch (err) {
+    return res.status(200).json({
+      error: { reason: "bridge_exception", message: err?.message || String(err) }
+    });
+  }
+});
+
+/** ----- PUT /api/subscription/:id  { action: pause|resume|cancel|reactivate } ----- */
 app.put("/api/subscription/:id", checkAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -98,9 +182,7 @@ app.put("/api/subscription/:id", checkAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid action. Must be: pause, resume, cancel, or reactivate" });
     }
 
-    // Seal API: PUT /subscription (singular) with { id, action } in body
-    const sealPath = `/subscription`;
-    const { ok, status, body } = await callSeal(sealPath, {
+    const { ok, status, body } = await callSeal(`/subscription`, {
       method: "PUT",
       body: JSON.stringify({ id, action })
     });
@@ -111,104 +193,13 @@ app.put("/api/subscription/:id", checkAuth, async (req, res) => {
           reason: "upstream_error", 
           status, 
           body,
-          attempted_endpoint: `${SEAL_BASE}${sealPath}`,
+          attempted_endpoint: `${SEAL_BASE}/subscription`,
           request_payload: { id, action }
         } 
       });
     }
     
     return res.status(200).json(body);
-  } catch (err) {
-    return res.status(200).json({ error: { reason: "bridge_exception", message: err?.message || String(err) } });
-  }
-});
-
-/** ----- PUT /api/subscription/:id/reschedule -----
- * Change next payment date/time.
- * Body: { date: "YYYY-MM-DD", time: "HH:mm", timezone: "America/Chicago", reset_schedule?: true, attempt_id?: number }
- */
-app.put("/api/subscription/:id/reschedule", checkAuth, async (req, res) => {
-  try {
-    const subscriptionId = Number(req.params.id);
-    if (!subscriptionId) {
-      return res.status(400).json({ error: "Missing subscription id" });
-    }
-
-    const date = (req.body?.date || "").trim();
-    const time = (req.body?.time || "").trim();
-    const timezone = (req.body?.timezone || "").trim();
-    const resetSchedule = req.body?.reset_schedule !== false; // default true
-    let attemptId = req.body?.attempt_id ? Number(req.body.attempt_id) : 0;
-
-    if (!date || !time || !timezone) {
-      return res.status(400).json({ error: "Missing date/time/timezone" });
-    }
-
-    // If no attempt id provided, fetch upcoming attempts for this subscription
-    if (!attemptId) {
-      const attemptsResp = await callSeal(`/subscription-billing-attempts?subscription_id=${subscriptionId}`);
-      if (!attemptsResp.ok) {
-        return res.status(200).json({ 
-          error: { 
-            reason: "upstream_error", 
-            status: attemptsResp.status, 
-            body: attemptsResp.body 
-          } 
-        });
-      }
-      
-      const arr = Array.isArray(attemptsResp.body?.payload) 
-        ? attemptsResp.body.payload 
-        : Array.isArray(attemptsResp.body?.attempts) 
-          ? attemptsResp.body.attempts 
-          : [];
-      
-      if (arr.length > 0) {
-        arr.sort((a, b) => {
-          const dateA = new Date(a.date_time || a.datetime || a.scheduled_at || 0);
-          const dateB = new Date(b.date_time || b.datetime || b.scheduled_at || 0);
-          return dateA - dateB;
-        });
-        attemptId = Number(arr[0].id);
-      }
-    }
-
-    if (!attemptId) {
-      return res.status(200).json({
-        error: { 
-          reason: "no_billing_attempt_found", 
-          message: "Could not find an upcoming billing attempt for this subscription." 
-        }
-      });
-    }
-
-    // Reschedule the attempt
-    const payload = {
-      id: attemptId,
-      subscription_id: subscriptionId,
-      action: "reschedule",
-      date,
-      time,
-      timezone,
-      reset_schedule: resetSchedule
-    };
-
-    const updateResp = await callSeal(`/subscription-billing-attempt`, {
-      method: "PUT",
-      body: JSON.stringify(payload)
-    });
-
-    if (!updateResp.ok) {
-      return res.status(200).json({ 
-        error: { 
-          reason: "upstream_error", 
-          status: updateResp.status, 
-          body: updateResp.body 
-        } 
-      });
-    }
-
-    return res.status(200).json({ ok: true, billing_attempt_id: attemptId, result: updateResp.body });
   } catch (err) {
     return res.status(200).json({ error: { reason: "bridge_exception", message: err?.message || String(err) } });
   }
