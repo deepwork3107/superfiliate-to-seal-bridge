@@ -113,11 +113,49 @@ You should see:
 
 For production, consider using a process manager like PM2:
 
+#### Option 1: Using Ecosystem File (Recommended)
+
+1. Make sure your `.env` file exists in the project root with `SEAL_MERCHANT_TOKEN` set
+2. Start with the ecosystem config:
+
 ```bash
 npm install -g pm2
-pm2 start index.js --name superfiliate-seal-bridge
+pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
+```
+
+#### Option 2: Direct Start with Environment Variables
+
+```bash
+npm install -g pm2
+pm2 start index.js --name superfiliate-seal-api --env production
+pm2 save
+pm2 startup
+```
+
+**Important:** When using PM2, ensure:
+- The `.env` file exists in the same directory as `index.js`
+- PM2 is started from the project root directory
+- The `SEAL_MERCHANT_TOKEN` is set in your `.env` file
+
+#### PM2 Management Commands
+
+```bash
+# View logs
+pm2 logs superfiliate-seal-api
+
+# Restart
+pm2 restart superfiliate-seal-api
+
+# Stop
+pm2 stop superfiliate-seal-api
+
+# Delete
+pm2 delete superfiliate-seal-api
+
+# Monitor
+pm2 monit
 ```
 
 ## 📡 API Endpoints
@@ -189,6 +227,7 @@ superfiliate-seal-bridge/
 ├── seal.js               # Seal API helper functions
 ├── package.json          # Node.js dependencies
 ├── package-lock.json     # Locked dependency versions
+├── ecosystem.config.js   # PM2 configuration file
 ├── .env                  # Environment variables (not in git)
 ├── .gitignore           # Git ignore rules
 └── README.md            # This file
@@ -205,9 +244,54 @@ superfiliate-seal-bridge/
 
 ## 🐛 Troubleshooting
 
-### Issue: "Missing SEAL_MERCHANT_TOKEN in .env"
+### Issue: "Missing SEAL_MERCHANT_TOKEN in .env" (PM2)
 
-**Solution:** Make sure your `.env` file exists and contains `SEAL_MERCHANT_TOKEN=your_token`
+**Symptoms:** PM2 logs show `❌ Missing SEAL_MERCHANT_TOKEN in .env` repeatedly
+
+**Solutions:**
+
+1. **Verify `.env` file exists and contains the token:**
+   ```bash
+   cd /path/to/superfiliate-seal-bridge
+   cat .env
+   # Should show: SEAL_MERCHANT_TOKEN=your_actual_token_here
+   ```
+
+2. **Ensure PM2 is running from the correct directory:**
+   ```bash
+   # Stop the current PM2 process
+   pm2 delete superfiliate-seal-api
+   
+   # Navigate to project directory
+   cd /path/to/superfiliate-seal-bridge
+   
+   # Start using ecosystem file (recommended)
+   pm2 start ecosystem.config.js
+   
+   # Or start directly with explicit path
+   pm2 start index.js --name superfiliate-seal-api --cwd /path/to/superfiliate-seal-bridge
+   ```
+
+3. **Use ecosystem.config.js (Recommended):**
+   The ecosystem file loads environment variables properly. Make sure to:
+   ```bash
+   pm2 delete superfiliate-seal-api
+   pm2 start ecosystem.config.js
+   ```
+
+4. **Manually set environment variable in PM2:**
+   ```bash
+   pm2 delete superfiliate-seal-api
+   pm2 start index.js --name superfiliate-seal-api --update-env --env production
+   pm2 set superfiliate-seal-api SEAL_MERCHANT_TOKEN "your_token_here"
+   pm2 restart superfiliate-seal-api
+   ```
+
+5. **Check PM2 working directory:**
+   ```bash
+   pm2 describe superfiliate-seal-api
+   # Check the "cwd" field - it should point to your project directory
+   ```
 
 ### Issue: "No active Seal subscription found"
 
