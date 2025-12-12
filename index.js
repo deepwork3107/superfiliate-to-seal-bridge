@@ -104,11 +104,64 @@ if (!SEAL_TOKEN) {
   console.error("⚠️  Or set it in PM2: pm2 set superfiliate-seal-bridge SEAL_MERCHANT_TOKEN 'your_token'");
 }
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Server listening on port ${PORT}`);
   if (SEAL_TOKEN) {
     console.log(`✅ SEAL_MERCHANT_TOKEN is configured`);
   } else {
     console.log(`⚠️  SEAL_MERCHANT_TOKEN is NOT configured - Seal API calls will fail`);
   }
+});
+
+// Handle server errors (like port already in use)
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use. Please use a different port or stop the process using port ${PORT}.`);
+    process.exit(1);
+  } else {
+    console.error('❌ Server error:', err);
+    process.exit(1);
+  }
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n⚠️  Received SIGINT signal. Shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ HTTP server closed.');
+    process.exit(0);
+  });
+  
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('⚠️  Forcing shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n⚠️  Received SIGTERM signal. Shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ HTTP server closed.');
+    process.exit(0);
+  });
+  
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('⚠️  Forcing shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+});
+
+// Handle uncaught errors
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  server.close(() => {
+    process.exit(1);
+  });
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit on unhandled rejection, just log it
 });
