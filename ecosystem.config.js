@@ -8,8 +8,13 @@ module.exports = {
       watch: false,
       env: {
         NODE_ENV: "production",
-        PORT: 3001, // Default port (can be overridden by .env file)
+        PORT: 3001, // Set port here - this will override .env file
         // dotenv will load .env file automatically
+      },
+      // Override .env PORT if it conflicts
+      env_production: {
+        NODE_ENV: "production",
+        PORT: 3001,
       },
       // Use PM2's default log location or specify absolute paths
       // error_file: "./logs/err.log",

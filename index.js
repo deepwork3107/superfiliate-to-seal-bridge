@@ -1,5 +1,6 @@
 // index.js
-require("dotenv").config();
+// Load .env file, but don't override existing environment variables (like those set by PM2)
+require("dotenv").config({ override: false });
 const express = require("express");
 
 // Our Seal helper functions
