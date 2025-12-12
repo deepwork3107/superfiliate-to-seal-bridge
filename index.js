@@ -32,7 +32,13 @@ async function findSealSubscriptionIdByEmail(email) {
 
     return subscriptionId;
   } catch (err) {
-    console.error("❌ Error fetching Seal subscriptions for", email, err);
+    // Check if it's a missing token error
+    if (err.message && err.message.includes("SEAL_MERCHANT_TOKEN")) {
+      console.error("❌ Configuration Error:", err.message);
+      console.error("❌ Please set SEAL_MERCHANT_TOKEN in your .env file or PM2 environment variables");
+    } else {
+      console.error("❌ Error fetching Seal subscriptions for", email, err.message || err);
+    }
     return null;
   }
 }
@@ -89,6 +95,20 @@ app.post("/webhooks/superfiliate/customer_updated", async (req, res) => {
   }
 });
 
+// Validate environment before starting server
+const SEAL_TOKEN = process.env.SEAL_MERCHANT_TOKEN;
+if (!SEAL_TOKEN) {
+  console.error("⚠️  WARNING: SEAL_MERCHANT_TOKEN not found in environment variables");
+  console.error("⚠️  The server will start, but Seal API calls will fail until the token is set.");
+  console.error("⚠️  Please ensure your .env file exists and contains SEAL_MERCHANT_TOKEN");
+  console.error("⚠️  Or set it in PM2: pm2 set superfiliate-seal-bridge SEAL_MERCHANT_TOKEN 'your_token'");
+}
+
 app.listen(PORT, () => {
   console.log(`🚀 Server listening on port ${PORT}`);
+  if (SEAL_TOKEN) {
+    console.log(`✅ SEAL_MERCHANT_TOKEN is configured`);
+  } else {
+    console.log(`⚠️  SEAL_MERCHANT_TOKEN is NOT configured - Seal API calls will fail`);
+  }
 });

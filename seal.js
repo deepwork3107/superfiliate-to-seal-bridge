@@ -1,11 +1,14 @@
 const axios = require("axios");
 
-const SEAL_TOKEN = process.env.SEAL_MERCHANT_TOKEN;
 const SEAL_BASE = "https://app.sealsubscriptions.com/shopify/merchant/api";
 
-if (!SEAL_TOKEN) {
-  console.error("❌ Missing SEAL_MERCHANT_TOKEN in .env");
-  process.exit(1);
+// Helper function to get and validate token
+function getSealToken() {
+  const token = process.env.SEAL_MERCHANT_TOKEN;
+  if (!token) {
+    throw new Error("Missing SEAL_MERCHANT_TOKEN in environment variables. Please set it in your .env file or PM2 environment.");
+  }
+  return token;
 }
 
 // LOG HELPER
@@ -37,6 +40,7 @@ function logError(err) {
 //  GET SUBSCRIPTIONS BY EMAIL
 // ===============================
 async function getSubscriptionsByEmail(email) {
+  const SEAL_TOKEN = getSealToken();
   const url = `${SEAL_BASE}/subscriptions?query=${encodeURIComponent(email)}`;
 
   logRequest("GET", url, { params: { email } });
@@ -87,6 +91,7 @@ function pickActiveSubscriptionId(subscriptionsResponse) {
 //  APPLY DISCOUNT TO SUBSCRIPTION
 // ===============================
 async function applyDiscountCodeToSubscription(subscriptionId, discountCode) {
+  const SEAL_TOKEN = getSealToken();
   const url = `${SEAL_BASE}/subscription-discount-code`;
 
   const body = {
