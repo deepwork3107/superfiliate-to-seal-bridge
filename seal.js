@@ -6,34 +6,11 @@ const SEAL_BASE = "https://app.sealsubscriptions.com/shopify/merchant/api";
 function getSealToken() {
   const token = process.env.SEAL_MERCHANT_TOKEN;
   if (!token) {
-    throw new Error("Missing SEAL_MERCHANT_TOKEN in environment variables. Please set it in your .env file or PM2 environment.");
+    throw new Error(
+      "Missing SEAL_MERCHANT_TOKEN in environment variables. Please set it in your .env file or PM2 environment."
+    );
   }
   return token;
-}
-
-// LOG HELPER
-function logRequest(method, url, info = {}) {
-  console.log(`\n=== SEAL API REQUEST ===`);
-  console.log(`➡️ Method: ${method}`);
-  console.log(`➡️ URL: ${url}`);
-  if (info.params) console.log(`➡️ Params:`, info.params);
-  if (info.data) console.log(`➡️ Body:`, info.data);
-  console.log(`=========================\n`);
-}
-
-function logResponse(code, data) {
-  console.log(`=== SEAL API RESPONSE ===`);
-  console.log(`⬅️ Status: ${code}`);
-  console.log(`⬅️ Data:`, JSON.stringify(data, null, 2));
-  console.log(`==========================\n`);
-}
-
-function logError(err) {
-  console.log(`\n❌ SEAL API ERROR ❌`);
-  console.log("Status:", err.response?.status);
-  console.log("Data:", err.response?.data);
-  console.log("Message:", err.message);
-  console.log("=========================\n");
 }
 
 // ===============================
@@ -43,7 +20,7 @@ async function getSubscriptionsByEmail(email) {
   const SEAL_TOKEN = getSealToken();
   const url = `${SEAL_BASE}/subscriptions?query=${encodeURIComponent(email)}`;
 
-  logRequest("GET", url, { params: { email } });
+  // Minimal logging: show that we are calling Seal for this email
 
   try {
     const res = await axios.get(url, {
@@ -53,10 +30,17 @@ async function getSubscriptionsByEmail(email) {
       },
     });
 
-    logResponse(res.status, res.data);
+    // Minimal logging: show status code only
+    console.log(`✅ Seal: subscriptions fetch succeeded (status ${res.status})`);
     return res.data;
   } catch (err) {
-    logError(err);
+    console.error(
+      "❌ Seal: error fetching subscriptions",
+      "status:",
+      err.response?.status,
+      "message:",
+      err.message
+    );
     throw err;
   }
 }
@@ -68,7 +52,6 @@ function pickActiveSubscriptionId(subscriptionsResponse) {
   // Handle nested payload structure: resp.payload.subscriptions
   const subscriptions = subscriptionsResponse?.payload?.subscriptions || [];
   if (!Array.isArray(subscriptions) || subscriptions.length === 0) {
-    console.log("⚠️ No subscriptions found for customer");
     return null;
   }
 
@@ -78,12 +61,10 @@ function pickActiveSubscriptionId(subscriptionsResponse) {
   );
 
   if (!activeSubscription) {
-    console.log("⚠️ No active subscriptions found.");
     return null;
   }
 
   // Return the subscription ID of the active subscription
-  console.log(`ℹ️ Selected active subscription ID: ${activeSubscription.id}`);
   return activeSubscription.id;
 }
 
@@ -100,7 +81,8 @@ async function applyDiscountCodeToSubscription(subscriptionId, discountCode) {
     discount_code: discountCode,
   };
 
-  logRequest("PUT", url, { data: body });
+  // Minimal logging: show that we are applying a code
+  
 
   try {
     const res = await axios.put(url, body, {
@@ -110,13 +92,17 @@ async function applyDiscountCodeToSubscription(subscriptionId, discountCode) {
       },
     });
 
-    logResponse(res.status, res.data);
-
     console.log(
-      `✅ Successfully applied discount code ${discountCode} to subscription ${subscriptionId}`
+      `✅ Seal: successfully applied discount code ${discountCode} to subscription ${subscriptionId} (status ${res.status})`
     );
   } catch (err) {
-    logError(err);
+    console.error(
+      "❌ Seal: error applying discount code",
+      "status:",
+      err.response?.status,
+      "message:",
+      err.message
+    );
     throw err;
   }
 }

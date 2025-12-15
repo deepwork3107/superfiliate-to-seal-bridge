@@ -29,7 +29,6 @@ async function findSealSubscriptionIdByEmail(email) {
   try {
     const resp = await getSubscriptionsByEmail(email);
     const subscriptionId = pickActiveSubscriptionId(resp);
-    console.log("🔎 Seal subscription for", email, "=>", subscriptionId);
 
     return subscriptionId;
   } catch (err) {
@@ -67,15 +66,12 @@ app.post("/webhooks/superfiliate/customer_updated", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    console.log(`➡️ customer_updated for ${email}, rewardCode = ${rewardCode}`);
 
     // 1) Find active Seal subscription for this email
     const subscriptionId = await findSealSubscriptionIdByEmail(email);
 
     if (!subscriptionId) {
-      console.warn(
-        `⚠️ No active Seal subscription found for email ${email}. Not applying code.`
-      );
+     
       return res.sendStatus(200);
     }
 
