@@ -57,7 +57,7 @@ Add the following environment variables:
 SEAL_MERCHANT_TOKEN=your_seal_merchant_token_here
 
 # Server Configuration (optional)
-PORT=3000
+PORT=3001
 ```
 
 **Important:** 
@@ -75,7 +75,7 @@ PORT=3000
 
 ### Server Port
 
-By default, the server runs on port `3000`. You can change this by setting the `PORT` environment variable:
+By default, the server runs on port `3001`. You can change this by setting the `PORT` environment variable:
 
 ```env
 PORT=8080
@@ -106,7 +106,7 @@ npm start
 
 You should see:
 ```
-🚀 Server listening on port 3000
+🚀 Server listening on port 3001
 ```
 
 ### Production Mode
